@@ -1,8 +1,8 @@
 name: read_qr_gallery
 description: A new flutter plugin project.
 version: 0.0.1
-author:
-homepage:
+author: Cirrus IT <info@cirrus-it.net>
+homepage: https://github.com/Waskar/read_qr_gallery
 
 environment:
   sdk: ">=2.0.0-dev.68.0 <3.0.0"
