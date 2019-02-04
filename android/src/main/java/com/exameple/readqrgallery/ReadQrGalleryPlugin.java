@@ -28,11 +28,7 @@ public class ReadQrGalleryPlugin implements MethodChannel.MethodCallHandler {
 
     final MethodChannel channel = new MethodChannel(registrar.messenger(), CHANNEL);
 
-    final File externalFilesDirectory = registrar.activity().getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-    final ExifDataCopier exifDataCopier = new ExifDataCopier();
-    final ImageResizer imageResizer = new ImageResizer(externalFilesDirectory, exifDataCopier);
-
-    final ImagePickerDelegate delegate = new ImagePickerDelegate(registrar.activity(), externalFilesDirectory, imageResizer);
+    final ImagePickerDelegate delegate = new ImagePickerDelegate(registrar.activity());
 
 
     registrar.addActivityResultListener(delegate);

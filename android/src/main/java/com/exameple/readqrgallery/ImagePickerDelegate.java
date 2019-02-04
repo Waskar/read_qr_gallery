@@ -26,22 +26,16 @@ import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.PluginRegistry;
 
-public class ImagePickerDelegate implements PluginRegistry.ActivityResultListener, PluginRegistry.RequestPermissionsResultListener  {
-    @VisibleForTesting static final int REQUEST_CODE_CHOOSE_IMAGE_FROM_GALLERY = 2342;
-    @VisibleForTesting static final int REQUEST_EXTERNAL_IMAGE_STORAGE_PERMISSION = 2344;
-    @VisibleForTesting static final int REQUEST_CODE_CHOOSE_VIDEO_FROM_GALLERY = 2352;
-    @VisibleForTesting static final int REQUEST_EXTERNAL_VIDEO_STORAGE_PERMISSION = 2354;
-
-    @VisibleForTesting final String fileProviderName;
-
+public class ImagePickerDelegate implements PluginRegistry.ActivityResultListener, PluginRegistry.RequestPermissionsResultListener {
+    @VisibleForTesting
+    static final int REQUEST_CODE_CHOOSE_IMAGE_FROM_GALLERY = 2342;
+    @VisibleForTesting
+    static final int REQUEST_EXTERNAL_IMAGE_STORAGE_PERMISSION = 2344;
+    @VisibleForTesting
+    final String fileProviderName;
     private final Activity activity;
-    private final File externalFilesDirectory;
-    private final ImageResizer imageResizer;
     private final PermissionManager permissionManager;
-    private final IntentResolver intentResolver;
-    private final FileUriResolver fileUriResolver;
     private final FileUtils fileUtils;
-
     BarcodeDetector detector;
 
     interface PermissionManager {
@@ -49,31 +43,13 @@ public class ImagePickerDelegate implements PluginRegistry.ActivityResultListene
 
         void askForPermission(String permissionName, int requestCode);
     }
-
-    interface IntentResolver {
-        boolean resolveActivity(Intent intent);
-    }
-
-    interface FileUriResolver {
-        Uri resolveFileProviderUriForFile(String fileProviderName, File imageFile);
-
-        void getFullImagePath(Uri imageUri, OnPathReadyListener listener);
-    }
-
-    interface OnPathReadyListener {
-        void onPathReady(String path);
-    }
-
-    private Uri pendingCameraMediaUri;
     private MethodChannel.Result pendingResult;
     private MethodCall methodCall;
 
     public ImagePickerDelegate(
-            final Activity activity, File externalFilesDirectory, ImageResizer imageResizer) {
+            final Activity activity) {
         this(
                 activity,
-                externalFilesDirectory,
-                imageResizer,
                 null,
                 null,
                 new PermissionManager() {
@@ -82,65 +58,27 @@ public class ImagePickerDelegate implements PluginRegistry.ActivityResultListene
                         return ActivityCompat.checkSelfPermission(activity, permissionName)
                                 == PackageManager.PERMISSION_GRANTED;
                     }
-
                     @Override
                     public void askForPermission(String permissionName, int requestCode) {
-                        ActivityCompat.requestPermissions(activity, new String[] {permissionName}, requestCode);
+                        ActivityCompat.requestPermissions(activity, new String[]{permissionName}, requestCode);
                     }
                 },
-                new IntentResolver() {
-                    @Override
-                    public boolean resolveActivity(Intent intent) {
-                        return intent.resolveActivity(activity.getPackageManager()) != null;
-                    }
-                },
-                new FileUriResolver() {
-                    @Override
-                    public Uri resolveFileProviderUriForFile(String fileProviderName, File file) {
-                        return FileProvider.getUriForFile(activity, fileProviderName, file);
-                    }
 
-                    @Override
-                    public void getFullImagePath(final Uri imageUri, final OnPathReadyListener listener) {
-                        MediaScannerConnection.scanFile(
-                                activity,
-                                new String[] {imageUri.getPath()},
-                                null,
-                                new MediaScannerConnection.OnScanCompletedListener() {
-                                    @Override
-                                    public void onScanCompleted(String path, Uri uri) {
-                                        listener.onPathReady(path);
-                                    }
-                                });
-                    }
-                },
                 new FileUtils());
     }
 
-    /**
-     * This constructor is used exclusively for testing; it can be used to provide mocks to final
-     * fields of this class. Otherwise those fields would have to be mutable and visible.
-     */
     @VisibleForTesting
     ImagePickerDelegate(
             Activity activity,
-            File externalFilesDirectory,
-            ImageResizer imageResizer,
             MethodChannel.Result result,
             MethodCall methodCall,
             PermissionManager permissionManager,
-            IntentResolver intentResolver,
-            FileUriResolver fileUriResolver,
             FileUtils fileUtils) {
         this.activity = activity;
-        this.externalFilesDirectory = externalFilesDirectory;
-        this.imageResizer = imageResizer;
         this.fileProviderName = activity.getPackageName() + ".flutter.image_provider";
         this.pendingResult = result;
         this.methodCall = methodCall;
         this.permissionManager = permissionManager;
-        this.intentResolver = intentResolver;
-        this.fileUriResolver = fileUriResolver;
         this.fileUtils = fileUtils;
     }
 
@@ -178,18 +116,17 @@ public class ImagePickerDelegate implements PluginRegistry.ActivityResultListene
             default:
                 return false;
         }
-
         if (!permissionGranted) {
             finishWithSuccess(null);
         }
-
         return true;
     }
 
     @Override
     public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
         switch (requestCode) {
-            case REQUEST_CODE_CHOOSE_IMAGE_FROM_GALLERY: handleChooseImageResult(resultCode, data);
+            case REQUEST_CODE_CHOOSE_IMAGE_FROM_GALLERY:
+                handleChooseImageResult(resultCode, data);
                 break;
             default:
                 return false;
@@ -199,42 +136,35 @@ public class ImagePickerDelegate implements PluginRegistry.ActivityResultListene
 
     private void handleChooseImageResult(int resultCode, Intent data) {
 
-        if (resultCode == Activity.RESULT_OK && data != null) {
-            String path = fileUtils.getPathFromUri(activity, data.getData());
-            qr(data);
-            Log.i(getClass().getSimpleName(), "Este es el path ? : "+ path);
-            return;
+        try {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                qr(data);
+                return;
+            }
+        } catch (Exception e) {
+            Log.d("Error", "" + e);
         }
+
         finishWithSuccess(null);
     }
-    public void qr(Intent data){
+
+    public void qr(Intent data) {
         detector = new BarcodeDetector.Builder(activity.getApplicationContext())
                 .setBarcodeFormats(Barcode.DATA_MATRIX | Barcode.QR_CODE)
                 .build();
 
         Uri selectedImage = data.getData();
-        Log.i(getClass().getSimpleName(), "Uri y aqui? : "+ selectedImage);
         String[] filePathColumn = {MediaStore.Images.Media.DATA};
-        Log.i(getClass().getSimpleName(), "filePathColumn: "+ filePathColumn);
-        Cursor cursor = activity.getApplicationContext().getContentResolver().query(selectedImage,filePathColumn,null,null,null);
-        Log.i(getClass().getSimpleName(), "Cursor: "+ cursor);
+        Cursor cursor = activity.getApplicationContext().getContentResolver().query(selectedImage, filePathColumn, null, null, null);
         cursor.moveToFirst();
         int columnIndex = cursor.getColumnIndex(filePathColumn[0]);
-        Log.i(getClass().getSimpleName(), "columnIndex: "+ columnIndex);
         String picturePath = cursor.getString(columnIndex);
-        Log.i(getClass().getSimpleName(), "picturePath: "+ picturePath);
         cursor.close();
         Bitmap bitmap = BitmapFactory.decodeFile(picturePath);
-        Log.i(getClass().getSimpleName(), "bitmap: "+ bitmap);
         Frame frame = new Frame.Builder().setBitmap(bitmap).build();
-        Log.i(getClass().getSimpleName(), "Frame: "+ frame);
         SparseArray<Barcode> barcodes = detector.detect(frame);
-        Log.i(getClass().getSimpleName(), "barcodes: "+ barcodes);
         Barcode thisCode = barcodes.valueAt(0);
-        Log.i(getClass().getSimpleName(), "thisCode: "+ thisCode);
-        Log.i(getClass().getSimpleName(), "thisCode: "+ thisCode.rawValue);
         finishWithSuccess(thisCode.rawValue);
-
     }
 
     private boolean setPendingMethodCallAndResult(MethodCall methodCall, MethodChannel.Result result) {
@@ -247,9 +177,7 @@ public class ImagePickerDelegate implements PluginRegistry.ActivityResultListene
     }
 
     private void finishWithSuccess(String thisCode) {
-        Log.i(getClass().getSimpleName(), "Y esto : "+ thisCode);
         pendingResult.success(thisCode);
-        Log.i(getClass().getSimpleName(), "este es el image path : "+ thisCode);
         clearMethodCallAndResult();
     }
 
