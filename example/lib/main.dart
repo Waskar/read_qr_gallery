@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
-
-import 'package:flutter/services.dart';
 import 'package:read_qr_gallery/read_qr_gallery.dart';
 
 void main() => runApp(MyApp());
@@ -30,14 +27,10 @@ class MyHomePage extends StatefulWidget {
 }
 class _MyHomePageState extends State<MyHomePage> {
 
-  ReadQrGallery _readqrandroidswift = new ReadQrGallery();
-
   String _qr = "nada";
 
   void captureImage(ImageSource captureMode) {
-    debugPrint ("aqui sale QR $captureMode");
     ReadQrGallery.pickImage().then((result){
-      print("Ya tengo el QR $result");
       setState(() {
         _qr = result.toString();
       });
